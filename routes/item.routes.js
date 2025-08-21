@@ -5,5 +5,7 @@ const itemController = require('../controllers/item.controller');
 
 
 router.post('/create', authMiddleware, itemController.createItems);
+router.get('/analytics', authMiddleware, itemController.getAnalytics);
+router.get('/today', authMiddleware, itemController.getTodayItems);
 
 module.exports = router;
