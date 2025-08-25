@@ -3,6 +3,13 @@ const { generateFormId } = require("../utils/formid");
 const mongoose = require("mongoose");
 
 class ItemService {
+
+  toUTC = (date) => {
+    const offsetMinutes = 330;
+    return new Date(date.getTime() - offsetMinutes * 60 * 1000);
+  };
+
+
   async createItems(userId, items) {
     if (!userId) {
       throw new Error("User ID missing");
@@ -63,27 +70,40 @@ class ItemService {
     const istToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfTodayUTC = toUTC(istToday);
 
-    // start of week (IST, Sunday start)
-    const istWeek = new Date(istToday);
-    istWeek.setDate(istToday.getDate() - istToday.getDay());
-    const startOfWeekUTC = toUTC(istWeek);
+    // --- WEEK RANGE (Monday 00:00 IST → Sunday 23:59 IST) ---
+    const istWeekStart = new Date(istToday);
+    const day = istToday.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+    const diffToMonday = day === 0 ? -6 : 1 - day; // if Sunday, go back 6 days
+    istWeekStart.setDate(istToday.getDate() + diffToMonday);
+    istWeekStart.setHours(0, 0, 0, 0);
+    const startOfWeekUTC = toUTC(istWeekStart);
 
-    // start of month (IST)
+    const istWeekEnd = new Date(istWeekStart);
+    istWeekEnd.setDate(istWeekEnd.getDate() + 6);
+    istWeekEnd.setHours(23, 59, 59, 999);
+    const endOfWeekUTC = toUTC(istWeekEnd);
+
+    // --- MONTH RANGE (1st day IST → till now) ---
     const istMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfMonthUTC = toUTC(istMonth);
 
     // aggregation helper
     const getTotal = async (match) => {
       const result = await Item.aggregate([
-        { $match: { user_id: userObjectId, ...match } }, 
+        { $match: { user_id: userObjectId, ...match } },
         { $group: { _id: null, total: { $sum: "$totalprice" } } },
       ]);
       return result.length > 0 ? result[0].total : 0;
     };
 
     const todayTotal = await getTotal({ createdAt: { $gte: startOfTodayUTC } });
-    const weekTotal = await getTotal({ createdAt: { $gte: startOfWeekUTC } });
+
+    const weekTotal = await getTotal({
+      createdAt: { $gte: startOfWeekUTC, $lte: endOfWeekUTC },
+    });
+
     const monthTotal = await getTotal({ createdAt: { $gte: startOfMonthUTC } });
+
     const grandTotal = await getTotal({});
 
     return {
@@ -94,34 +114,109 @@ class ItemService {
     };
   }
 
-async getTodayItems(userId) {
-  if (!userId) {
-    throw new Error("User ID missing");
+  async getTodayItems(userId) {
+    if (!userId) {
+      throw new Error("User ID missing");
+    }
+
+    const userObjectId =
+      typeof userId === "string" ? new mongoose.Types.ObjectId(userId) : userId;
+
+    const now = new Date();
+
+    const istToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfTodayUTC = this.toUTC(istToday);
+
+    const items = await Item.find({
+      user_id: userObjectId,
+      createdAt: { $gte: startOfTodayUTC },
+    }).sort({ createdAt: -1 });
+
+    const total = items.reduce((sum, item) => sum + item.totalprice, 0);
+
+    return { items, total };
   }
 
-  const userObjectId =
-    typeof userId === "string" ? new mongoose.Types.ObjectId(userId) : userId;
+  async getThisWeekItems(userId) {
+    if (!userId) {
+      throw new Error("User ID missing");
+    }
 
-  const now = new Date();
+    const userObjectId =
+      typeof userId === "string" ? new mongoose.Types.ObjectId(userId) : userId;
 
-  const toUTC = (date) => {
-    const offsetMinutes = 330; 
-    return new Date(date.getTime() - offsetMinutes * 60 * 1000);
-  };
+    const now = new Date();
 
-  const istToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfTodayUTC = toUTC(istToday);
+    // Calculate Monday (start of week)
+    const day = now.getDay(); // 0 = Sunday, 1 = Monday, ...
+    const diffToMonday = day === 0 ? -6 : 1 - day; // if Sunday, go back 6 days
+    const monday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + diffToMonday
+    );
 
-  const items = await Item.find({
-    user_id: userObjectId,
-    createdAt: { $gte: startOfTodayUTC },
-  }).sort({ createdAt: -1 });
+    // Start of Monday 00:00 IST
+    const startOfWeekUTC = this.toUTC(new Date(monday.setHours(0, 0, 0, 0)));
 
-  const total = items.reduce((sum, item) => sum + item.totalprice, 0);
+    // End of Sunday 23:59 IST
+    const sunday = new Date(startOfWeekUTC);
+    sunday.setUTCDate(sunday.getUTCDate() + 6);
+    const endOfWeekUTC = new Date(sunday.setUTCHours(23, 59, 59, 999));
 
-  return { items, total };
-}
+    const items = await Item.find({
+      user_id: userObjectId,
+      createdAt: { $gte: startOfWeekUTC, $lte: endOfWeekUTC },
+    }).sort({ createdAt: -1 });
 
+    const total = items.reduce((sum, item) => sum + item.totalprice, 0);
+
+    return { items, total };
+  }
+
+  async getItemsByDate(userId, dateStr) {
+    if (!userId) {
+      throw new Error("User ID missing");
+    }
+    if (!dateStr) {
+      throw new Error("Date missing");
+    }
+
+    const userObjectId =
+      typeof userId === "string" ? new mongoose.Types.ObjectId(userId) : userId;
+
+    const inputDate = new Date(dateStr); // e.g. "2025-08-25"
+    if (isNaN(inputDate)) {
+      throw new Error("Invalid date format. Use YYYY-MM-DD");
+    }
+
+    // Start of day IST
+    const startOfDayUTC = toUTC(
+      new Date(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate())
+    );
+
+    // End of day IST
+    const endOfDayUTC = toUTC(
+      new Date(
+        inputDate.getFullYear(),
+        inputDate.getMonth(),
+        inputDate.getDate(),
+        23,
+        59,
+        59,
+        999
+      )
+    );
+
+    const items = await Item.find({
+      user_id: userObjectId,
+      createdAt: { $gte: startOfDayUTC, $lte: endOfDayUTC },
+    }).sort({ createdAt: -1 });
+
+    const total = items.reduce((sum, item) => sum + item.totalprice, 0);
+
+    return { items, total };
+  }
 
 }
 

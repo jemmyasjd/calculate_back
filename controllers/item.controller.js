@@ -58,6 +58,45 @@ class ItemController {
   }
 });
 
+getThisWeekItems = asyncHandler(async (req, res) => {
+  try {
+    const userId = req.user?.userid;
+    const result = await itemService.getThisWeekItems(userId);
+
+    return res.status(200).json({
+      success: true,
+      data: result.items,
+      total: result.total,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Something went wrong",
+    });
+  }
+});
+
+getItemsByDate = asyncHandler(async (req, res) => {
+  try {
+    const userId = req.user?.userid;
+    const { date } = req.body; 
+
+    const result = await itemService.getItemsByDate(userId, date);
+
+    return res.status(200).json({
+      success: true,
+      data: result.items,
+      total: result.total,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Something went wrong",
+    });
+  }
+});
+
+
 
 }
 
