@@ -191,12 +191,12 @@ class ItemService {
     }
 
     // Start of day IST
-    const startOfDayUTC = toUTC(
+    const startOfDayUTC = this.toUTC(
       new Date(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate())
     );
 
     // End of day IST
-    const endOfDayUTC = toUTC(
+    const endOfDayUTC = this.toUTC(
       new Date(
         inputDate.getFullYear(),
         inputDate.getMonth(),
@@ -217,6 +217,65 @@ class ItemService {
 
     return { items, total };
   }
+
+  async getMonthItems(userId, { page = 1, limit = 20, search = "", month, year }) {
+    if (!userId) {
+      throw new Error("User ID missing");
+    }
+
+    const userObjectId =
+      typeof userId === "string" ? new mongoose.Types.ObjectId(userId) : userId;
+
+    const now = new Date();
+
+    // If month/year not provided, use current month
+    const m = month ? Number(month) - 1 : now.getMonth(); // month is 0-indexed
+    const y = year ? Number(year) : now.getFullYear();
+
+    // First day of given month
+    const firstDayOfMonth = new Date(y, m, 1);
+    const startOfMonthUTC = this.toUTC(
+      new Date(firstDayOfMonth.setHours(0, 0, 0, 0))
+    );
+
+    // Last day of given month
+    const lastDayOfMonth = new Date(y, m + 1, 0);
+    const endOfMonthUTC = this.toUTC(
+      new Date(lastDayOfMonth.setHours(23, 59, 59, 999))
+    );
+
+    // Pagination
+    const skip = (page - 1) * limit;
+
+    // Build query
+    const query = {
+      user_id: userObjectId,
+      createdAt: { $gte: startOfMonthUTC, $lte: endOfMonthUTC },
+    };
+
+    if (search && search.trim()) {
+      query.name = { $regex: search, $options: "i" }; // case-insensitive search
+    }
+
+    // Total count (after filter)
+    const total = await Item.countDocuments(query);
+
+    // Paginated items
+    const items = await Item.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Sum totalprice
+    const sum = await Item.aggregate([
+      { $match: query },
+      { $group: { _id: null, total: { $sum: "$totalprice" } } },
+    ]);
+    const totalPrice = sum.length > 0 ? sum[0].total : 0;
+
+    return { items, total, totalPrice };
+  }
+
 
 }
 

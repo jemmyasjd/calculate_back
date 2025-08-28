@@ -9,6 +9,7 @@ router.get('/analytics', authMiddleware, itemController.getAnalytics);
 router.get('/today', authMiddleware, itemController.getTodayItems);
 router.get('/week', authMiddleware, itemController.getThisWeekItems);
 router.post('/by-date', authMiddleware, itemController.getItemsByDate);
+router.post('/month', authMiddleware, itemController.getMonthItems);
 
 
 module.exports = router;

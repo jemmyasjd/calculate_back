@@ -96,6 +96,35 @@ getItemsByDate = asyncHandler(async (req, res) => {
   }
 });
 
+getMonthItems = asyncHandler(async (req, res) => {
+  try {
+    const userId = req.user?.userid;
+    const { page, limit, search, month, year } = req.body;
+
+    const result = await itemService.getMonthItems(userId, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 20,
+      search: search || "",
+      month,
+      year,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result.items,
+      totalItems: result.total,      // total count for pagination
+      totalPrice: result.totalPrice, // sum of totalprice
+      currentPage: Number(page) || 1,
+      pageSize: Number(limit) || 20,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Something went wrong",
+    });
+  }
+});
+
 
 
 }
