@@ -276,6 +276,66 @@ class ItemService {
     return { items, total, totalPrice };
   }
 
+  async getOverallExpense(userId, { page = 1, limit = 20, search = "", month, year }) {
+    if (!userId) {
+      throw new Error("User ID missing");
+    }
+
+    const userObjectId =
+      typeof userId === "string" ? new mongoose.Types.ObjectId(userId) : userId;
+
+    const now = new Date();
+    let startDate, endDate;
+
+    if (year && !month) {
+      // Entire year
+      const y = Number(year);
+      startDate = new Date(y, 0, 1, 0, 0, 0, 0);
+      endDate = new Date(y, 11, 31, 23, 59, 59, 999);
+    } else if (month) {
+      // Month + Year (or current year if not provided)
+      const y = year ? Number(year) : now.getFullYear();
+      const m = Number(month) - 1;
+
+      startDate = new Date(y, m, 1, 0, 0, 0, 0);
+      endDate = new Date(y, m + 1, 0, 23, 59, 59, 999);
+    }
+
+    // Build query
+    const query = { user_id: userObjectId };
+
+    if (startDate && endDate) {
+      query.createdAt = { $gte: this.toUTC(startDate), $lte: this.toUTC(endDate) };
+    }
+
+    if (search && search.trim()) {
+      query.name = { $regex: search, $options: "i" };
+    }
+
+    // Pagination
+    const skip = (page - 1) * limit;
+
+    // Count
+    const total = await Item.countDocuments(query);
+
+    // Items
+    const items = await Item.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Total sum
+    const sum = await Item.aggregate([
+      { $match: query },
+      { $group: { _id: null, total: { $sum: "$totalprice" } } },
+    ]);
+
+    const totalPrice = sum.length > 0 ? sum[0].total : 0;
+
+    return { items, total, totalPrice };
+  }
+
+
 
 }
 

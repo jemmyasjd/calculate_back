@@ -10,6 +10,7 @@ router.get('/today', authMiddleware, itemController.getTodayItems);
 router.get('/week', authMiddleware, itemController.getThisWeekItems);
 router.post('/by-date', authMiddleware, itemController.getItemsByDate);
 router.post('/month', authMiddleware, itemController.getMonthItems);
+router.post('/overall', authMiddleware, itemController.getOverallExpense);
 
 
 module.exports = router;

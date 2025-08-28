@@ -125,6 +125,40 @@ getMonthItems = asyncHandler(async (req, res) => {
   }
 });
 
+getOverallExpense = asyncHandler(async (req, res) => {
+  try {
+    const userId = req.user?.userid;
+    const { page, limit, search, month, year } = req.body;
+
+    const result = await itemService.getOverallExpense(userId, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 20,
+      search: search || "",
+      month,
+      year,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result.items,
+      totalItems: result.total,
+      totalPrice: result.totalPrice,
+      currentPage: Number(page) || 1,
+      pageSize: Number(limit) || 20,
+      filter: {
+        month: month || null,
+        year: year || null,
+      },
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      message: err.message || "Something went wrong",
+    });
+  }
+});
+
+
 
 
 }
